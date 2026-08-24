@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "github.com/KantapatSg/golang-essential-gRPC/gen/notification;notificationv1";
+
+import "google/protobuf/timestamp.proto";
+
+message Notification { string id = 1; string order_id = 2; string event_type = 3; string message = 4; google.protobuf.Timestamp created_at = 5; }
+message SendNotificationRequest { string order_id = 1; string event_type = 2; string message = 3; }
+message ListNotificationsRequest { string order_id = 1; int32 page = 2; int32 page_size = 3; }
+message ListNotificationsResponse { int32 page = 1; int32 page_size = 2; int64 total = 3; repeated Notification notifications = 4; }
+
+service NotificationService {
+  rpc SendNotification(SendNotificationRequest) returns (Notification);
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+}

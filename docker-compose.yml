@@ -1,34 +1,59 @@
 services:
-  postgres:
+  order-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: products
+      POSTGRES_DB: orders
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d products"]
+      test: ["CMD-SHELL", "pg_isready -U app -d orders"]
       interval: 3s
       timeout: 3s
       retries: 10
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
-
-  product-service:
+      - orderdata:/var/lib/postgresql/data
+      - ./migrations/orders:/docker-entrypoint-initdb.d:ro
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d notifications"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - notificationdata:/var/lib/postgresql/data
+      - ./migrations/notifications:/docker-entrypoint-initdb.d:ro
+  notification-service:
     build:
       context: .
       dockerfile: Dockerfile
-      target: product-service
+      target: notification-service
     environment:
-      GRPC_ADDR: ":9090"
-      DATABASE_URL: postgres://app:app@postgres:5432/products?sslmode=disable
+      NOTIFICATION_GRPC_ADDR: ":9091"
+      NOTIFICATION_DATABASE_URL: "postgres://app:app@notification-db:5432/notifications?sslmode=disable"
       DB_MAX_CONNS: "10"
     depends_on:
-      postgres:
+      notification-db:
         condition: service_healthy
-
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: order-service
+    environment:
+      ORDER_GRPC_ADDR: ":9090"
+      ORDER_DATABASE_URL: "postgres://app:app@order-db:5432/orders?sslmode=disable"
+      NOTIFICATION_GRPC_TARGET: "notification-service:9091"
+      DB_MAX_CONNS: "10"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
   gateway:
     build:
       context: .
@@ -36,12 +61,15 @@ services:
       target: gateway
     environment:
       HTTP_ADDR: ":8080"
-      GRPC_TARGET: product-service:9090
+      ORDER_GRPC_TARGET: "order-service:9090"
+      NOTIFICATION_GRPC_TARGET: "notification-service:9091"
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
-      product-service:
+      order-service:
         condition: service_started
-
+      notification-service:
+        condition: service_started
 volumes:
-  pgdata:
+  orderdata:
+  notificationdata:
